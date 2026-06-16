@@ -7,6 +7,7 @@ const MAX_BOOKS = 5;
 let supabaseClient = null;
 let currentUser = null;
 let currentProfile = null;
+let adminUnlocked = false;
 
 let appData = {
   settings: { member_count: 4, voting_round: 1, runoff_candidate_ids: null },
@@ -68,6 +69,10 @@ function ensureSupabase() {
 }
 
 async function loadAllData() {
+  // Asegura que el cliente de Supabase tenga el JWT listo antes de consultar
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (session?.user) currentUser = session.user;
+
   const [settingsRes, candidatesRes, votesRes, currentRes, historyRes] = await Promise.all([
     supabaseClient.from("app_settings").select("*").eq("id", 1).single(),
     supabaseClient.from("candidates").select("*").order("created_at"),
@@ -77,11 +82,17 @@ async function loadAllData() {
   ]);
 
   if (settingsRes.error) throw settingsRes.error;
+  if (candidatesRes.error) throw candidatesRes.error;
+  if (currentRes.error) throw currentRes.error;
+
   appData.settings = settingsRes.data;
   appData.candidates = candidatesRes.data || [];
-  appData.votes = votesRes.data || [];
+  appData.votes = votesRes.error ? [] : (votesRes.data || []);
   appData.current = currentRes.data?.title ? currentRes.data : null;
-  appData.history = historyRes.data || [];
+  appData.history = historyRes.error ? [] : (historyRes.data || []);
+
+  if (votesRes.error) console.warn("votes:", votesRes.error.message);
+  if (historyRes.error) console.warn("history:", historyRes.error.message);
 
   if (currentUser) {
     const round = appData.settings.voting_round;
@@ -91,6 +102,47 @@ async function loadAllData() {
   } else {
     appData.myVote = null;
   }
+}
+
+let authWork = Promise.resolve();
+
+function queueAuth(task) {
+  authWork = authWork.then(task).catch((err) => console.error(err));
+  return authWork;
+}
+
+async function refreshApp() {
+  if (!supabaseClient) return;
+  try {
+    await loadAllData();
+    render();
+  } catch (err) {
+    console.error("Error cargando datos:", err);
+  }
+}
+
+async function establishSession(session) {
+  currentUser = session.user;
+  const { data: profile } = await supabaseClient
+    .from("profiles")
+    .select("*")
+    .eq("id", currentUser.id)
+    .maybeSingle();
+  currentProfile = profile;
+  hideAuth();
+  if (isAdmin()) $("#adminBtn").classList.remove("hidden");
+  else $("#adminBtn").classList.add("hidden");
+}
+
+async function syncSessionFromClient() {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (session) {
+    await establishSession(session);
+    return true;
+  }
+  currentUser = null;
+  currentProfile = null;
+  return false;
 }
 
 async function loadProfiles() {
@@ -166,10 +218,16 @@ function resetAuthState() {
   showAuth();
 }
 
+function updateLogoutButton() {
+  const bookOpen = $("#bookSpread").classList.contains("is-visible");
+  $("#logoutBtn").classList.toggle("hidden", !currentUser || !bookOpen);
+}
+
 function showAuth() {
   $("#bookSpread").classList.add("auth-required");
   $("#authOverlay").classList.remove("hidden");
   $("#userChip").classList.add("hidden");
+  updateLogoutButton();
 }
 
 function hideAuth() {
@@ -177,6 +235,7 @@ function hideAuth() {
   $("#authOverlay").classList.add("hidden");
   $("#userChip").classList.remove("hidden");
   $("#userName").textContent = currentProfile?.display_name || currentUser?.email || "";
+  updateLogoutButton();
 }
 
 function setAuthError(msg) {
@@ -204,23 +263,13 @@ async function loadSession() {
     currentProfile = null;
     return false;
   }
-  currentUser = session.user;
-  const { data: profile, error } = await supabaseClient
-    .from("profiles")
-    .select("*")
-    .eq("id", currentUser.id)
-    .single();
-  if (error) throw error;
-  currentProfile = profile;
+  await establishSession(session);
   return true;
 }
 
 async function onAuthSuccess() {
   await loadSession();
-  hideAuth();
-  if (isAdmin()) $("#adminBtn").classList.remove("hidden");
-  await loadAllData();
-  render();
+  await refreshApp();
 }
 
 async function handleLogin(e) {
@@ -288,6 +337,7 @@ async function handleLogout(e) {
   }
   resetAuthState();
   await signOutCompletely();
+  await refreshApp();
 }
 
 function switchAuthTab(tab) {
@@ -313,7 +363,6 @@ function showTab(view) {
 }
 
 function render() {
-  if (!currentUser) return;
   renderVote();
   renderCurrent();
   renderHistory();
@@ -362,8 +411,8 @@ function renderVote() {
     card.className = "book-card";
     card.innerHTML = `
       ${book.cover_url
-        ? `<img class="cover" src="${book.cover_url}" alt="${escapeHtml(book.title)}" />`
-        : `<div class="cover placeholder">📕</div>`}
+        ? `<img class="cover clickable-cover" src="${book.cover_url}" alt="${escapeHtml(book.title)}" />`
+        : `<div class="cover placeholder clickable-cover">📕</div>`}
       <div class="card-body">
         <span class="card-title">${escapeHtml(book.title)}</span>
         <span class="votes-count"><b>${count}</b> voto${count === 1 ? "" : "s"}</span>
@@ -376,6 +425,9 @@ function renderVote() {
 
   grid.querySelectorAll("[data-vote]").forEach((btn) => {
     btn.addEventListener("click", () => castVote(btn.dataset.vote));
+  });
+  grid.querySelectorAll(".clickable-cover").forEach((el, i) => {
+    el.addEventListener("click", () => openBookDetail(pool[i]));
   });
 }
 
@@ -423,6 +475,27 @@ async function tallyVotes() {
   if (data?.status === "runoff") {
     setTimeout(() => alert("¡Empate! Se abre una nueva ronda entre los libros igualados."), 50);
   } else if (data?.status === "winner") {
+    // heredar descripción/archivos/tapa del candidato ganador al libro en lectura
+    try {
+      const { data: win } = await supabaseClient
+        .from("candidates")
+        .select("description, pdf_url, epub_url, cover_url")
+        .eq("title", data.title)
+        .limit(1)
+        .maybeSingle();
+      if (win) {
+        await supabaseClient.from("current_reading").update({
+          description: win.description,
+          pdf_url: win.pdf_url,
+          epub_url: win.epub_url,
+          cover_url: win.cover_url,
+        }).eq("id", 1);
+        await loadAllData();
+        render();
+      }
+    } catch (e) {
+      console.error(e);
+    }
     showTab("home");
     setTimeout(() => alert(`📖 ¡Ganó "${data.title}"! El admin puede configurar la lectura.`), 50);
   }
@@ -432,7 +505,15 @@ async function tallyVotes() {
 function renderCurrent() {
   const c = appData.current;
   if (!c?.title) return;
-  $("#currentCover").src = c.cover_url || "";
+  const cover = $("#currentCover");
+  cover.src = c.cover_url || "";
+  cover.classList.add("clickable-cover");
+  cover.onclick = () => {
+    const parts = [];
+    if (c.read_date) parts.push(formatDate(c.read_date));
+    if (c.chapters) parts.push(c.chapters);
+    openBookDetail(c, parts.join(" · ") || null);
+  };
   $("#currentTitle").textContent = c.title;
   $("#currentDate").textContent = c.read_date ? formatDate(c.read_date) : "Por definir";
   $("#currentChapters").textContent = c.chapters || "Por definir";
@@ -450,6 +531,50 @@ function setupDownload(el, url, label) {
     el.classList.add("disabled");
     el.textContent = `${label} (no disponible)`;
   }
+}
+
+/* ---------- Modal detalle de libro ---------- */
+function openBookDetail(book, meta) {
+  if (!book) return;
+  $("#detailTitle").textContent = book.title || "";
+  const coverEl = $("#detailCover");
+  const placeholder = $("#detailCoverPlaceholder");
+  if (book.cover_url) {
+    coverEl.src = book.cover_url;
+    coverEl.classList.remove("hidden");
+    placeholder.classList.add("hidden");
+  } else {
+    coverEl.removeAttribute("src");
+    coverEl.classList.add("hidden");
+    placeholder.classList.remove("hidden");
+  }
+  const descEl = $("#detailDescription");
+  if (book.description) {
+    descEl.textContent = book.description;
+    descEl.classList.remove("hidden");
+  } else {
+    descEl.textContent = "";
+    descEl.classList.add("hidden");
+  }
+  const metaEl = $("#detailMeta");
+  if (meta) {
+    metaEl.textContent = meta;
+    metaEl.classList.remove("hidden");
+  } else {
+    metaEl.textContent = "";
+    metaEl.classList.add("hidden");
+  }
+  setupDownload($("#detailPdf"), book.pdf_url, "PDF");
+  setupDownload($("#detailEpub"), book.epub_url, "EPUB");
+  const overlay = $("#bookDetailOverlay");
+  overlay.classList.remove("hidden");
+  requestAnimationFrame(() => overlay.classList.add("is-open"));
+}
+
+function closeBookDetail() {
+  const overlay = $("#bookDetailOverlay");
+  overlay.classList.remove("is-open");
+  setTimeout(() => overlay.classList.add("hidden"), 200);
 }
 
 /* ---------- Historial ---------- */
@@ -475,10 +600,13 @@ function renderHistory() {
       const item = document.createElement("div");
       item.className = "shelf-book";
       item.innerHTML = `
-        ${b.cover_url ? `<img src="${b.cover_url}" alt="${escapeHtml(b.title)}" />`
-          : `<div class="cover placeholder" style="width:120px;aspect-ratio:2/3;display:flex;align-items:center;justify-content:center;background:var(--bg-elevated);border-radius:4px;">📘</div>`}
+        ${b.cover_url
+          ? `<img class="clickable-cover" src="${b.cover_url}" alt="${escapeHtml(b.title)}" />`
+          : `<div class="cover placeholder clickable-cover" style="width:120px;aspect-ratio:2/3;display:flex;align-items:center;justify-content:center;background:var(--bg-elevated);border-radius:4px;">📘</div>`}
         <div class="sb-title">${escapeHtml(b.title)}</div>
         <div class="sb-date">${b.finished || ""}</div>`;
+      const coverEl = item.querySelector(".clickable-cover");
+      coverEl.addEventListener("click", () => openBookDetail(b, b.finished || null));
       row.appendChild(item);
     });
     shelf.appendChild(row);
@@ -487,13 +615,36 @@ function renderHistory() {
 }
 
 /* ---------- Admin ---------- */
-function openAdmin() {
-  if (!isAdmin()) {
-    alert("No tenés permisos de administrador.");
-    return;
-  }
+function showAdminPanel() {
+  $("#adminLogin").classList.add("hidden");
+  $("#adminPanel").classList.remove("hidden");
+  return renderAdmin();
+}
+
+async function openAdmin() {
   $("#adminOverlay").classList.remove("hidden");
-  renderAdmin();
+  if (adminUnlocked) await showAdminPanel();
+  else showAdminLogin();
+}
+
+function showAdminLogin() {
+  $("#adminLogin").classList.remove("hidden");
+  $("#adminPanel").classList.add("hidden");
+  $("#adminLoginError").classList.add("hidden");
+  $("#adminPass").value = "";
+  setTimeout(() => $("#adminUser")?.focus(), 50);
+}
+
+function submitAdminLogin() {
+  const user = (typeof ADMIN_USER !== "undefined") ? ADMIN_USER : "admin";
+  const pass = (typeof ADMIN_PASS !== "undefined") ? ADMIN_PASS : "quesito123";
+  if ($("#adminUser").value.trim() === user && $("#adminPass").value === pass) {
+    adminUnlocked = true;
+    showAdminPanel();
+  } else {
+    $("#adminLoginError").classList.remove("hidden");
+    $("#adminPass").value = "";
+  }
 }
 
 function closeAdmin() {
@@ -501,7 +652,14 @@ function closeAdmin() {
 }
 
 async function renderAdmin() {
-  await loadProfiles();
+  if (supabaseClient) {
+    try {
+      await loadAllData();
+      await loadProfiles();
+    } catch (e) {
+      console.error(e);
+    }
+  }
   $("#memberCount").value = appData.settings.member_count;
 
   const userList = $("#adminUserList");
@@ -544,6 +702,7 @@ async function renderAdmin() {
     $("#noWinnerMsg").classList.add("hidden");
     $("#winnerControls").classList.remove("hidden");
     $("#winnerName").textContent = appData.current.title;
+    $("#readDescription").value = appData.current.description || "";
     $("#readDate").value = appData.current.read_date || "";
     $("#readChapters").value = appData.current.chapters || "";
     $("#pdfUrl").value = appData.current.pdf_url || "";
@@ -552,6 +711,7 @@ async function renderAdmin() {
     $("#noWinnerMsg").classList.remove("hidden");
     $("#winnerControls").classList.add("hidden");
   }
+  render();
 }
 
 async function deleteUser(userId) {
@@ -578,40 +738,88 @@ async function removeCandidate(id) {
 
 let pendingCoverFile = null;
 
+function withTimeout(promise, ms, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]);
+}
+
+function newUploadPath(ext) {
+  const id = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${id}.${ext}`;
+}
+
 async function uploadCover(file) {
   const ext = file.name.split(".").pop() || "png";
-  const path = `${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabaseClient.storage.from("covers").upload(path, file, { upsert: false });
+  const path = newUploadPath(ext);
+  const { error } = await withTimeout(
+    supabaseClient.storage.from("covers").upload(path, file, { upsert: false }),
+    15000,
+    "La subida de la tapa tardó demasiado. ¿Creaste el bucket «covers» en Supabase?"
+  );
   if (error) throw error;
   const { data } = supabaseClient.storage.from("covers").getPublicUrl(path);
   return data.publicUrl;
 }
 
 async function handleAddBook() {
+  if (!ensureSupabase()) return;
+
   const title = $("#newBookTitle").value.trim();
   if (!title) { alert("Poné un título."); return; }
   if (appData.candidates.length >= MAX_BOOKS) return;
 
-  let cover_url = null;
-  if (pendingCoverFile) {
-    try {
-      cover_url = await uploadCover(pendingCoverFile);
-    } catch (e) {
-      alert("Error al subir la tapa: " + e.message);
+  const btn = $("#addBookBtn");
+  const prevLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Guardando…";
+
+  try {
+    let cover_url = null;
+    if (pendingCoverFile) {
+      try {
+        cover_url = await uploadCover(pendingCoverFile);
+      } catch (e) {
+        const msg = e?.message || String(e);
+        alert(`No se pudo subir la tapa (${msg}). El libro se guardará sin tapa.`);
+        cover_url = null;
+      }
+    }
+
+    const description = $("#newBookDesc").value.trim() || null;
+    const pdf_url = $("#newBookPdf").value.trim() || null;
+    const epub_url = $("#newBookEpub").value.trim() || null;
+
+    const { error } = await supabaseClient.from("candidates")
+      .insert({ title, cover_url, description, pdf_url, epub_url });
+    if (error) {
+      alert("No se pudo guardar el libro: " + error.message);
       return;
     }
+
+    pendingCoverFile = null;
+    $("#newBookTitle").value = "";
+    $("#newBookDesc").value = "";
+    $("#newBookPdf").value = "";
+    $("#newBookEpub").value = "";
+    $("#newBookCover").value = "";
+    $("#fileLabelText").textContent = "📁 Subir tapa (PNG)";
+    await loadAllData();
+    renderAdmin();
+    render();
+    alert(`"${title}" agregado a candidatos.`);
+  } catch (e) {
+    console.error(e);
+    alert("Error al agregar el libro: " + (e?.message || e));
+  } finally {
+    btn.disabled = appData.candidates.length >= MAX_BOOKS;
+    btn.textContent = appData.candidates.length >= MAX_BOOKS ? "Máximo alcanzado" : prevLabel;
   }
-
-  const { error } = await supabaseClient.from("candidates").insert({ title, cover_url });
-  if (error) { alert(error.message); return; }
-
-  pendingCoverFile = null;
-  $("#newBookTitle").value = "";
-  $("#newBookCover").value = "";
-  $("#fileLabelText").textContent = "📁 Subir tapa (PNG)";
-  await loadAllData();
-  renderAdmin();
-  render();
 }
 
 /* ---------- Portada: abrir / cerrar libro ---------- */
@@ -627,24 +835,26 @@ function openBook() {
     void spread.offsetWidth;
     spread.classList.add("is-visible");
   }, 480);
-  setTimeout(async () => {
-    spread.classList.add("content-in");
-    if (!supabaseClient) {
-      showAuth();
-      setAuthError("Configurá config.js con tu URL y anon key de Supabase para usar el club.");
-      return;
-    }
-    if (!currentUser) {
-      showAuth();
-    } else {
-      hideAuth();
+  setTimeout(() => {
+    queueAuth(async () => {
+      spread.classList.add("content-in");
+      updateLogoutButton();
+      if (!supabaseClient) {
+        showAuth();
+        setAuthError("Configurá config.js con tu URL y anon key de Supabase para usar el club.");
+        return;
+      }
+      await syncSessionFromClient();
       try {
         await loadAllData();
         render();
       } catch (e) {
         console.error(e);
       }
-    }
+      if (!currentUser) showAuth();
+      else hideAuth();
+      updateLogoutButton();
+    });
   }, 1180);
 }
 
@@ -653,6 +863,7 @@ function closeBook() {
   const scene = $("#scene");
   const spread = $("#bookSpread");
   spread.classList.remove("content-in");
+  $("#logoutBtn").classList.add("hidden");
   setTimeout(() => spread.classList.remove("is-visible"), 380);
   setTimeout(() => {
     spread.classList.add("hidden");
@@ -668,6 +879,7 @@ function bindEvents() {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openBook(); }
   });
   $("#closeBook").addEventListener("click", closeBook);
+  $("#logoutBtn").addEventListener("click", handleLogout);
 
   $$(".tab-btn[data-view]").forEach((b) =>
     b.addEventListener("click", () => showTab(b.dataset.view)));
@@ -678,16 +890,30 @@ function bindEvents() {
   $("#registerForm").addEventListener("submit", handleRegister);
 
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("#bookDetailOverlay").classList.contains("hidden")) {
+      closeBookDetail();
+      return;
+    }
     if (e.ctrlKey && e.key.toLowerCase() === "p") {
       e.preventDefault();
-      if (!isAdmin()) return;
-      $("#adminBtn").classList.toggle("hidden");
+      // Ctrl+P abre (o cierra) la ventana de admin
+      if ($("#adminOverlay").classList.contains("hidden")) openAdmin();
+      else closeAdmin();
     }
   });
   $("#adminBtn").addEventListener("click", openAdmin);
   $("#adminClose").addEventListener("click", closeAdmin);
+  $("#adminLoginBtn").addEventListener("click", submitAdminLogin);
+  $("#adminLogin").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); submitAdminLogin(); }
+  });
   $("#adminOverlay").addEventListener("click", (e) => {
     if (e.target === $("#adminOverlay")) closeAdmin();
+  });
+
+  $("#detailClose").addEventListener("click", closeBookDetail);
+  $("#bookDetailOverlay").addEventListener("click", (e) => {
+    if (e.target === $("#bookDetailOverlay")) closeBookDetail();
   });
 
   $("#saveMembers").addEventListener("click", async () => {
@@ -706,7 +932,13 @@ function bindEvents() {
     pendingCoverFile = file;
     $("#fileLabelText").textContent = "✓ " + file.name;
   });
-  $("#addBookBtn").addEventListener("click", handleAddBook);
+  $("#addBookBtn").addEventListener("click", () => handleAddBook());
+  $(".candidate-form")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && e.target.tagName !== "TEXTAREA") {
+      e.preventDefault();
+      handleAddBook();
+    }
+  });
 
   $("#resetVotesBtn").addEventListener("click", async () => {
     if (!confirm("¿Reiniciar todos los votos y el desempate?")) return;
@@ -720,6 +952,7 @@ function bindEvents() {
   $("#saveReading").addEventListener("click", async () => {
     if (!appData.current?.title) return;
     const { error } = await supabaseClient.from("current_reading").update({
+      description: $("#readDescription").value.trim() || null,
       read_date: $("#readDate").value || null,
       chapters: $("#readChapters").value.trim() || null,
       pdf_url: $("#pdfUrl").value.trim() || null,
@@ -738,10 +971,13 @@ function bindEvents() {
     await supabaseClient.from("history").insert({
       title: c.title,
       cover_url: c.cover_url,
+      description: c.description || null,
+      pdf_url: c.pdf_url || null,
+      epub_url: c.epub_url || null,
       finished: new Date().toLocaleDateString("es-AR", { month: "short", year: "numeric" }),
     });
     await supabaseClient.from("current_reading").update({
-      title: null, cover_url: null, read_date: null,
+      title: null, cover_url: null, description: null, read_date: null,
       chapters: null, pdf_url: null, epub_url: null,
     }).eq("id", 1);
     await loadAllData();
@@ -766,41 +1002,38 @@ async function boot() {
 
   if (!initSupabase()) return;
 
-  supabaseClient.auth.onAuthStateChange(async (event, session) => {
-    if (event === "SIGNED_OUT" || (event === "INITIAL_SESSION" && !session)) {
-      resetAuthState();
-      return;
-    }
-    if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
-      currentUser = session.user;
-      const { data: profile } = await supabaseClient
-        .from("profiles")
-        .select("*")
-        .eq("id", currentUser.id)
-        .single();
-      currentProfile = profile;
-      hideAuth();
-      if (isAdmin()) $("#adminBtn").classList.remove("hidden");
-      try {
-        await loadAllData();
-        render();
-      } catch (err) {
-        console.error(err);
+  let initialSessionDone = false;
+
+  const initialSession = await new Promise((resolve) => {
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      if (event === "INITIAL_SESSION") {
+        if (!initialSessionDone) {
+          initialSessionDone = true;
+          resolve(session);
+        }
+        return;
       }
-    }
+
+      queueAuth(async () => {
+        if (event === "SIGNED_OUT") {
+          resetAuthState();
+          await refreshApp();
+          return;
+        }
+        if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) {
+          await establishSession(session);
+          await refreshApp();
+        }
+      });
+    });
   });
 
-  const hasSession = await loadSession();
-  if (hasSession) {
-    hideAuth();
-    if (isAdmin()) $("#adminBtn").classList.remove("hidden");
-    try {
-      await loadAllData();
-      render();
-    } catch (e) {
-      console.error(e);
-    }
+  if (initialSession) await establishSession(initialSession);
+  else {
+    currentUser = null;
+    currentProfile = null;
   }
+  await refreshApp();
 }
 
 boot();

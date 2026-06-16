@@ -47,7 +47,6 @@
       <button class="tab-btn" data-view="history">Biblioteca</button>
       <div id="userChip" class="user-chip hidden">
         <span id="userName"></span>
-        <button type="button" class="btn btn-ghost btn-sm" id="logoutBtn" title="Cerrar sesión" onclick="handleLogout(event)">Salir</button>
       </div>
       <button class="tab-btn admin-toggle hidden" id="adminBtn" title="Modo administrador">🔒 Admin</button>
     </nav>
@@ -151,12 +150,27 @@
     </div>
   </div>
 
+  <button type="button" id="logoutBtn" class="logout-x hidden" title="Cerrar sesión" aria-label="Cerrar sesión">✕</button>
+
   <!-- PANEL ADMIN -->
   <div id="adminOverlay" class="overlay hidden">
     <div class="modal admin-modal">
       <button class="modal-close" id="adminClose">✕</button>
 
-      <div id="adminPanel">
+      <div id="adminLogin">
+        <h2>Acceso de administrador</h2>
+        <p class="muted">Ingresá tus credenciales para entrar al panel.</p>
+        <label>Usuario
+          <input type="text" id="adminUser" placeholder="Usuario" autocomplete="off" />
+        </label>
+        <label>Contraseña
+          <input type="password" id="adminPass" placeholder="••••••••" autocomplete="off" />
+        </label>
+        <button class="btn btn-primary" id="adminLoginBtn">Entrar</button>
+        <p id="adminLoginError" class="error hidden">Usuario o contraseña incorrectos.</p>
+      </div>
+
+      <div id="adminPanel" class="hidden">
         <h2>Panel de administrador</h2>
 
         <div class="admin-section">
@@ -176,11 +190,14 @@
           <h3>2 · Candidatos para votar (máx. 5)</h3>
           <div class="candidate-form">
             <input type="text" id="newBookTitle" placeholder="Título del libro" />
+            <textarea id="newBookDesc" rows="3" placeholder="Descripción / sinopsis del libro"></textarea>
             <label class="file-label">
               <span id="fileLabelText">📁 Subir tapa (PNG)</span>
               <input type="file" id="newBookCover" accept="image/png,image/*" />
             </label>
-            <button class="btn btn-primary" id="addBookBtn">Agregar</button>
+            <input type="text" id="newBookPdf" placeholder="Ruta PDF, ej: books/nombre.pdf (vacío = no disponible)" />
+            <input type="text" id="newBookEpub" placeholder="Ruta EPUB, ej: books/nombre.epub (vacío = no disponible)" />
+            <button type="button" class="btn btn-primary" id="addBookBtn">Agregar</button>
           </div>
           <div id="adminBookList" class="admin-book-list"></div>
           <button class="btn btn-danger-ghost" id="resetVotesBtn">↺ Reiniciar votos</button>
@@ -191,17 +208,20 @@
           <div id="noWinnerMsg" class="muted">Cuando termine la votación, configurá acá la lectura.</div>
           <div id="winnerControls" class="hidden">
             <p>Libro activo: <strong id="winnerName"></strong></p>
+            <label>Descripción / sinopsis
+              <textarea id="readDescription" rows="3" placeholder="Descripción del libro"></textarea>
+            </label>
             <label>Próxima fecha de lectura
               <input type="date" id="readDate" />
             </label>
             <label>Capítulos a leer
               <input type="text" id="readChapters" placeholder="Ej: Capítulos 1 a 5" />
             </label>
-            <label>Link de descarga PDF (URL)
-              <input type="url" id="pdfUrl" placeholder="https://..." />
+            <label>Ruta del PDF (interna del proyecto)
+              <input type="text" id="pdfUrl" placeholder="books/nombre.pdf (vacío = no disponible)" />
             </label>
-            <label>Link de descarga EPUB (URL)
-              <input type="url" id="epubUrl" placeholder="https://..." />
+            <label>Ruta del EPUB (interna del proyecto)
+              <input type="text" id="epubUrl" placeholder="books/nombre.epub (vacío = no disponible)" />
             </label>
             <div class="admin-actions">
               <button class="btn btn-primary" id="saveReading">Guardar lectura</button>
@@ -213,6 +233,26 @@
         <div class="admin-section danger-zone">
           <h3>Zona peligrosa</h3>
           <button class="btn btn-danger-ghost" id="wipeAll">Borrar todos los datos</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DETALLE DE LIBRO -->
+  <div id="bookDetailOverlay" class="overlay hidden">
+    <div class="book-detail">
+      <button class="modal-close" id="detailClose">✕</button>
+      <div class="book-detail__cover-wrap">
+        <img id="detailCover" class="book-detail__cover" alt="Tapa del libro" />
+        <div id="detailCoverPlaceholder" class="book-detail__cover placeholder hidden">📕</div>
+      </div>
+      <div class="book-detail__info">
+        <h2 id="detailTitle"></h2>
+        <p id="detailMeta" class="book-detail__meta hidden"></p>
+        <p id="detailDescription" class="book-detail__desc"></p>
+        <div class="download-row">
+          <a id="detailPdf" class="btn btn-download" download>⬇ PDF</a>
+          <a id="detailEpub" class="btn btn-download" download>⬇ EPUB</a>
         </div>
       </div>
     </div>
