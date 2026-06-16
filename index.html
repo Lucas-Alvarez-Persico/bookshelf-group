@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quesosquad's Bookshelf</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Cinzel+Decorative:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ===== PORTADA: LIBRO CERRADO SOBRE MESA MEDIEVAL ===== -->
+  <div id="scene" class="scene">
+    <div class="candle-glow"></div>
+    <div class="book-stage">
+      <div id="coverBook" class="cover-book" role="button" tabindex="0" aria-label="Abrir el libro">
+        <div class="cover-book__back"></div>
+        <div class="cover-book__pages"></div>
+        <div class="cover-book__front">
+          <div class="leather">
+            <div class="leather-frame">
+              <img class="leather-logo" src="logo.png" alt="Quesosquad Bookshelf" />
+              <div class="corner tl"></div><div class="corner tr"></div>
+              <div class="corner bl"></div><div class="corner br"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="open-hint">✦ Tocá el libro para abrirlo ✦</p>
+  </div>
+
+  <!-- ===== LIBRO ABIERTO: CONTIENE TODA LA WEB ===== -->
+  <div id="bookSpread" class="book-spread hidden">
+    <div class="spread-inner">
+      <div class="spread-spine"></div>
+      <button id="closeBook" class="ribbon" title="Cerrar el libro">↩️</button>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo">🧀</span>
+      <h1>El Club de Lectura de la <span class="accent">Quesosquad</span></h1>
+    </div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-view="home">Inicio</button>
+      <button class="tab-btn" data-view="history">Biblioteca</button>
+      <div id="userChip" class="user-chip hidden">
+        <span id="userName"></span>
+        <button type="button" class="btn btn-ghost btn-sm" id="logoutBtn" title="Cerrar sesión" onclick="handleLogout(event)">Salir</button>
+      </div>
+      <button class="tab-btn admin-toggle hidden" id="adminBtn" title="Modo administrador">🔒 Admin</button>
+    </nav>
+  </header>
+
+  <main id="app">
+    <!-- HOME: VOTACIÓN -->
+    <section id="view-vote" class="view">
+      <div class="section-head">
+        <h2>Votación abierta</h2>
+        <p class="muted" id="voteSubtitle">Elegí el próximo libro del grupo.</p>
+      </div>
+      <div id="voteProgress" class="vote-progress"></div>
+      <div id="voteGrid" class="book-grid"></div>
+      <div id="voteEmpty" class="empty-state hidden">
+        <p>Todavía no hay libros cargados para votar.</p>
+        <p class="muted">Pedile al administrador que cargue los candidatos.</p>
+      </div>
+    </section>
+
+    <!-- HOME: LIBRO ACTIVO -->
+    <section id="view-current" class="view hidden">
+      <div class="current-book">
+        <div class="current-cover-wrap">
+          <img id="currentCover" class="current-cover" alt="Tapa del libro" />
+        </div>
+        <div class="current-info">
+          <span class="reading-badge">📖 Leyendo ahora</span>
+          <h2 id="currentTitle"></h2>
+          <div class="info-cards">
+            <div class="info-card">
+              <span class="info-label">Próxima lectura</span>
+              <span class="info-value" id="currentDate">—</span>
+            </div>
+            <div class="info-card">
+              <span class="info-label">Capítulos a leer</span>
+              <span class="info-value" id="currentChapters">—</span>
+            </div>
+          </div>
+          <div class="download-row">
+            <a id="dlPdf" class="btn btn-download" download>⬇ PDF</a>
+            <a id="dlEpub" class="btn btn-download" download>⬇ EPUB</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BIBLIOTECA -->
+    <section id="view-history" class="view hidden">
+      <div class="section-head">
+        <h2>Biblioteca</h2>
+        <p class="muted">Todo lo que leyó la Quesosquad.</p>
+      </div>
+      <div id="shelves" class="shelves"></div>
+      <div id="historyEmpty" class="empty-state hidden">
+        <p>La biblioteca todavía está vacía.</p>
+        <p class="muted">Los libros aparecerán acá cuando el grupo los termine.</p>
+      </div>
+    </section>
+  </main>
+
+    <!-- LOGIN / REGISTRO (al abrir el libro sin sesión) -->
+    <div id="authOverlay" class="auth-overlay hidden">
+      <div class="auth-card">
+        <span class="auth-emblem">🧀</span>
+        <h2>Bienvenido al club</h2>
+        <p class="muted">Iniciá sesión o creá tu perfil para votar.</p>
+
+        <div class="auth-tabs">
+          <button type="button" class="auth-tab active" data-auth-tab="login">Ingresar</button>
+          <button type="button" class="auth-tab" data-auth-tab="register">Registrarse</button>
+        </div>
+
+        <form id="loginForm" class="auth-form">
+          <label>Nombre o email
+            <input type="text" id="loginIdentifier" required placeholder="Tu nombre del club o tu@email.com" autocomplete="username" />
+          </label>
+          <label>Contraseña
+            <input type="password" id="loginPassword" required placeholder="••••••••" autocomplete="current-password" />
+          </label>
+          <button type="submit" class="btn btn-primary auth-submit">Ingresar</button>
+        </form>
+
+        <form id="registerForm" class="auth-form hidden">
+          <label>Nombre en el club
+            <input type="text" id="registerName" required placeholder="Ej: Nacho" autocomplete="nickname" />
+          </label>
+          <label>Email
+            <input type="email" id="registerEmail" required placeholder="tu@email.com" autocomplete="email" />
+          </label>
+          <label>Contraseña
+            <input type="password" id="registerPassword" required minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
+          </label>
+          <button type="submit" class="btn btn-primary auth-submit">Crear cuenta</button>
+        </form>
+
+        <p id="authError" class="error hidden"></p>
+        <p id="authSuccess" class="auth-success hidden"></p>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <!-- PANEL ADMIN -->
+  <div id="adminOverlay" class="overlay hidden">
+    <div class="modal admin-modal">
+      <button class="modal-close" id="adminClose">✕</button>
+
+      <div id="adminPanel">
+        <h2>Panel de administrador</h2>
+
+        <div class="admin-section">
+          <h3>0 · Usuarios del club</h3>
+          <div id="adminUserList" class="admin-user-list"></div>
+        </div>
+
+        <div class="admin-section">
+          <h3>1 · Integrantes del grupo</h3>
+          <label>¿Cuántas personas votan?
+            <input type="number" id="memberCount" min="1" value="4" />
+          </label>
+          <button class="btn" id="saveMembers">Guardar</button>
+        </div>
+
+        <div class="admin-section">
+          <h3>2 · Candidatos para votar (máx. 5)</h3>
+          <div class="candidate-form">
+            <input type="text" id="newBookTitle" placeholder="Título del libro" />
+            <label class="file-label">
+              <span id="fileLabelText">📁 Subir tapa (PNG)</span>
+              <input type="file" id="newBookCover" accept="image/png,image/*" />
+            </label>
+            <button class="btn btn-primary" id="addBookBtn">Agregar</button>
+          </div>
+          <div id="adminBookList" class="admin-book-list"></div>
+          <button class="btn btn-danger-ghost" id="resetVotesBtn">↺ Reiniciar votos</button>
+        </div>
+
+        <div class="admin-section" id="winnerSection">
+          <h3>3 · Libro en lectura</h3>
+          <div id="noWinnerMsg" class="muted">Cuando termine la votación, configurá acá la lectura.</div>
+          <div id="winnerControls" class="hidden">
+            <p>Libro activo: <strong id="winnerName"></strong></p>
+            <label>Próxima fecha de lectura
+              <input type="date" id="readDate" />
+            </label>
+            <label>Capítulos a leer
+              <input type="text" id="readChapters" placeholder="Ej: Capítulos 1 a 5" />
+            </label>
+            <label>Link de descarga PDF (URL)
+              <input type="url" id="pdfUrl" placeholder="https://..." />
+            </label>
+            <label>Link de descarga EPUB (URL)
+              <input type="url" id="epubUrl" placeholder="https://..." />
+            </label>
+            <div class="admin-actions">
+              <button class="btn btn-primary" id="saveReading">Guardar lectura</button>
+              <button class="btn btn-danger-ghost" id="finishBook">✓ Terminamos este libro</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-section danger-zone">
+          <h3>Zona peligrosa</h3>
+          <button class="btn btn-danger-ghost" id="wipeAll">Borrar todos los datos</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+</body>
+</html>
