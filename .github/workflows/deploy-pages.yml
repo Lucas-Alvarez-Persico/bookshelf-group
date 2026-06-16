@@ -1,0 +1,54 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar sitio y config.js
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          ADMIN_USER: ${{ secrets.ADMIN_USER }}
+          ADMIN_PASS: ${{ secrets.ADMIN_PASS }}
+        run: |
+          mkdir site
+          cp index.html app.js styles.css background.png logo.png site/
+          node -e "
+            const fs = require('fs');
+            const esc = (s) => String(s ?? '').replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"');
+            const body = [
+              'const SUPABASE_URL = \"' + esc(process.env.SUPABASE_URL) + '\";',
+              'const SUPABASE_ANON_KEY = \"' + esc(process.env.SUPABASE_ANON_KEY) + '\";',
+              '',
+              'const ADMIN_USER = \"' + esc(process.env.ADMIN_USER) + '\";',
+              'const ADMIN_PASS = \"' + esc(process.env.ADMIN_PASS) + '\";',
+              ''
+            ].join('\n');
+            fs.writeFileSync('site/config.js', body);
+          "
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - uses: actions/deploy-pages@v4
+        id: deployment
