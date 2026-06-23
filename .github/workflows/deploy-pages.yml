@@ -32,6 +32,7 @@ jobs:
         run: |
           mkdir site
           cp index.html app.js styles.css background.png logo.png site/
+          if [ -d books ]; then cp -r books site/; fi
           node -e "
             const fs = require('fs');
             const esc = (s) => String(s ?? '').replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"');
