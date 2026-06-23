@@ -41,20 +41,21 @@ create policy "open write" on history         for all using (true) with check (t
 drop policy if exists "open write" on app_settings;
 create policy "open write" on app_settings    for all using (true) with check (true);
 
--- 5) RPCs admin recreadas SIN chequeo de rol (para que reiniciar votos / borrar
---    todo / borrar usuario funcionen en modo "panel abierto").
---    NO se toca tally_votes_if_complete (la lógica del ganador/desempate).
+-- 5) RPCs admin SIN chequeo de rol (panel abierto). Todos los DELETE llevan WHERE
+--    porque la base bloquea borrados masivos sin filtro.
 drop function if exists admin_reset_votes();
 create function admin_reset_votes() returns void language sql security definer
   set search_path = public as $$
-    delete from votes;
+    delete from votes where id is not null;
     update app_settings set runoff_candidate_ids = null, voting_round = 1 where id = 1;
   $$;
 
 drop function if exists admin_wipe_all();
 create function admin_wipe_all() returns void language sql security definer
   set search_path = public as $$
-    delete from votes; delete from candidates; delete from history;
+    delete from votes      where id is not null;
+    delete from candidates where id is not null;
+    delete from history    where id is not null;
     update current_reading set title=null, cover_url=null, description=null,
       read_date=null, chapters=null, pdf_url=null, epub_url=null where id=1;
     update app_settings set runoff_candidate_ids=null, voting_round=1 where id=1;
@@ -70,3 +71,78 @@ create function admin_delete_user(target_id uuid) returns void language plpgsql
 
 grant execute on function admin_reset_votes(), admin_wipe_all(), admin_delete_user(uuid)
   to anon, authenticated;
+
+-- 6) CONTEO / CIERRE DE VOTACIÓN (reemplaza tally_votes_if_complete)
+--    Arregla "DELETE requires a WHERE clause" y, al haber ganador, copia TODOS
+--    los datos del libro (descripción, tapa, pdf, epub) a current_reading.
+drop function if exists tally_votes_if_complete();
+create function tally_votes_if_complete()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_round   int;
+  v_members int;
+  v_runoff  uuid[];
+  v_total   int;
+  v_max     int;
+  v_winners uuid[];
+  v_win     candidates%rowtype;
+begin
+  select voting_round, member_count, runoff_candidate_ids
+    into v_round, v_members, v_runoff
+    from app_settings where id = 1;
+
+  -- totales del pool (candidatos de desempate si hay, si no todos) en la ronda actual
+  with pool as (
+    select id from candidates where v_runoff is null or id = any(v_runoff)
+  ), counts as (
+    select c.id, count(v.id) n
+      from pool c
+      left join votes v on v.candidate_id = c.id and v.voting_round = v_round
+     group by c.id
+  )
+  select coalesce(sum(n),0)::int, coalesce(max(n),0)::int
+    into v_total, v_max from counts;
+
+  if v_members < 1 or v_total < v_members then
+    return jsonb_build_object('status','pending');
+  end if;
+
+  -- ganadores (mayor cantidad de votos, > 0)
+  with pool as (
+    select id from candidates where v_runoff is null or id = any(v_runoff)
+  ), counts as (
+    select c.id, count(v.id) n
+      from pool c
+      left join votes v on v.candidate_id = c.id and v.voting_round = v_round
+     group by c.id
+  )
+  select array_agg(id) into v_winners from counts where n = v_max and v_max > 0;
+
+  if v_winners is null then
+    return jsonb_build_object('status','pending');
+  end if;
+
+  -- empate -> nueva ronda de desempate entre los igualados
+  if array_length(v_winners,1) > 1 then
+    update app_settings
+       set runoff_candidate_ids = v_winners, voting_round = v_round + 1
+     where id = 1;
+    return jsonb_build_object('status','runoff');
+  end if;
+
+  -- ganador único -> pasa a "libro en lectura" con todos sus datos
+  select * into v_win from candidates where id = v_winners[1];
+  update current_reading
+     set title = v_win.title, cover_url = v_win.cover_url,
+         description = v_win.description, pdf_url = v_win.pdf_url,
+         epub_url = v_win.epub_url, read_date = null, chapters = null
+   where id = 1;
+
+  -- limpiar para el próximo ciclo (con WHERE, por el bloqueo de borrado masivo)
+  delete from votes      where id is not null;
+  delete from candidates where id is not null;
+  update app_settings set runoff_candidate_ids = null, voting_round = 1 where id = 1;
+
+  return jsonb_build_object('status','winner','title', v_win.title);
+end; $$;
+grant execute on function tally_votes_if_complete() to anon, authenticated;
