@@ -517,8 +517,67 @@ function renderCurrent() {
   $("#currentTitle").textContent = c.title;
   $("#currentDate").textContent = c.read_date ? formatDate(c.read_date) : "Por definir";
   $("#currentChapters").textContent = c.chapters || "Por definir";
+  $("#currentDescription").textContent = c.description || "";
   setupDownload($("#dlPdf"), c.pdf_url, "PDF");
   setupDownload($("#dlEpub"), c.epub_url, "EPUB");
+  renderRating(c.title);
+}
+
+/* ---------- Rating (quesitos) ---------- */
+async function loadRatings(bookTitle) {
+  const { data, error } = await supabaseClient
+    .from("book_ratings")
+    .select("*")
+    .eq("book_title", bookTitle);
+  if (error) { console.warn("ratings:", error.message); return { all: [], mine: null }; }
+  const all = data || [];
+  const mine = currentUser ? all.find((r) => r.user_id === currentUser.id) : null;
+  return { all, mine };
+}
+
+async function saveRating(bookTitle, rating) {
+  if (!currentUser) { showAuth(); return; }
+  const { error } = await supabaseClient
+    .from("book_ratings")
+    .upsert({
+      user_id: currentUser.id,
+      book_title: bookTitle,
+      rating: parseFloat(rating),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id,book_title" });
+  if (error) { console.error("rating save:", error.message); return; }
+  renderRating(bookTitle);
+}
+
+function updateCheeseSlots(rating) {
+  $$(".cheese-slot").forEach((slot) => {
+    const idx = parseInt(slot.dataset.index, 10);
+    slot.classList.remove("full", "half");
+    if (rating >= idx) slot.classList.add("full");
+    else if (rating >= idx - 0.5) slot.classList.add("half");
+  });
+}
+
+async function renderRating(bookTitle) {
+  const { all, mine } = await loadRatings(bookTitle);
+  const myRating = mine?.rating || 0;
+
+  updateCheeseSlots(myRating);
+
+  $$(".cheese-half").forEach((btn) => {
+    const value = parseFloat(btn.dataset.value);
+    btn.onclick = () => saveRating(bookTitle, value);
+    btn.onmouseenter = () => updateCheeseSlots(value);
+    btn.onmouseleave = () => updateCheeseSlots(myRating);
+  });
+
+  const avgEl = $("#ratingAvg");
+  if (all.length > 0) {
+    const avg = all.reduce((sum, r) => sum + r.rating, 0) / all.length;
+    avgEl.textContent = `${avg.toFixed(1)} / 5 · ${all.length} reseña${all.length === 1 ? "" : "s"}`;
+  } else {
+    avgEl.textContent = "";
+  }
 }
 
 function setupDownload(el, url, label) {
@@ -878,7 +937,22 @@ function bindEvents() {
   $("#coverBook").addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openBook(); }
   });
-  $("#closeBook").addEventListener("click", closeBook);
+  $("#bookSpread").addEventListener("click", (e) => {
+    if (e.target === $("#bookSpread")) closeBook();
+  });
+  $("#bookSpread").addEventListener("mouseover", (e) => {
+    if (e.target === $("#bookSpread")) {
+      $("#bookSpread").classList.add("show-close-hint");
+    }
+  });
+  $("#bookSpread").addEventListener("mouseout", (e) => {
+    if (e.target === $("#bookSpread") || !$("#bookSpread").contains(e.relatedTarget)) {
+      $("#bookSpread").classList.remove("show-close-hint");
+    }
+  });
+  $(".spread-inner").addEventListener("mouseover", () => {
+    $("#bookSpread").classList.remove("show-close-hint");
+  });
   $("#logoutBtn").addEventListener("click", handleLogout);
 
   $$(".tab-btn[data-view]").forEach((b) =>

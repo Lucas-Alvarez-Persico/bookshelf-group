@@ -35,7 +35,7 @@
   <div id="bookSpread" class="book-spread hidden">
     <div class="spread-inner">
       <div class="spread-spine"></div>
-      <button id="closeBook" class="ribbon" title="Cerrar el libro">↩️</button>
+      <div class="close-book-hint" id="closeBookHint">Cerrar libro</div>
 
   <header class="topbar">
     <div class="brand">
@@ -70,12 +70,51 @@
     <!-- HOME: LIBRO ACTIVO -->
     <section id="view-current" class="view hidden">
       <div class="current-book">
-        <div class="current-cover-wrap">
-          <img id="currentCover" class="current-cover" alt="Tapa del libro" />
+        <div class="current-left">
+          <div class="current-cover-wrap">
+            <img id="currentCover" class="current-cover" alt="Tapa del libro" />
+          </div>
+          <div id="ratingWidget" class="rating-widget">
+            <span class="rating-label">Tu reseña</span>
+            <div class="rating-cheeses">
+              <div class="cheese-slot" data-index="1">
+                <span class="cheese-bg">🧀</span>
+                <span class="cheese-fill">🧀</span>
+                <button class="cheese-half cheese-left" data-value="0.5"></button>
+                <button class="cheese-half cheese-right" data-value="1"></button>
+              </div>
+              <div class="cheese-slot" data-index="2">
+                <span class="cheese-bg">🧀</span>
+                <span class="cheese-fill">🧀</span>
+                <button class="cheese-half cheese-left" data-value="1.5"></button>
+                <button class="cheese-half cheese-right" data-value="2"></button>
+              </div>
+              <div class="cheese-slot" data-index="3">
+                <span class="cheese-bg">🧀</span>
+                <span class="cheese-fill">🧀</span>
+                <button class="cheese-half cheese-left" data-value="2.5"></button>
+                <button class="cheese-half cheese-right" data-value="3"></button>
+              </div>
+              <div class="cheese-slot" data-index="4">
+                <span class="cheese-bg">🧀</span>
+                <span class="cheese-fill">🧀</span>
+                <button class="cheese-half cheese-left" data-value="3.5"></button>
+                <button class="cheese-half cheese-right" data-value="4"></button>
+              </div>
+              <div class="cheese-slot" data-index="5">
+                <span class="cheese-bg">🧀</span>
+                <span class="cheese-fill">🧀</span>
+                <button class="cheese-half cheese-left" data-value="4.5"></button>
+                <button class="cheese-half cheese-right" data-value="5"></button>
+              </div>
+            </div>
+            <span class="rating-avg" id="ratingAvg"></span>
+          </div>
         </div>
         <div class="current-info">
           <span class="reading-badge">📖 Leyendo ahora</span>
           <h2 id="currentTitle"></h2>
+          <p id="currentDescription" class="current-description"></p>
           <div class="info-cards">
             <div class="info-card">
               <span class="info-label">Próxima lectura</span>
