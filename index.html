@@ -4,32 +4,185 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Quesosquad's Bookshelf</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Cinzel+Decorative:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- ===== PORTADA: LIBRO CERRADO SOBRE MESA MEDIEVAL ===== -->
+  <!-- ===== ESCENA 3D: HABITACIÓN DE LA QUESOSQUAD ===== -->
   <div id="scene" class="scene">
-    <div class="candle-glow"></div>
-    <div class="book-stage">
-      <div id="coverBook" class="cover-book" role="button" tabindex="0" aria-label="Abrir el libro">
-        <div class="cover-book__back"></div>
-        <div class="cover-book__pages"></div>
-        <div class="cover-book__front">
-          <div class="leather">
-            <div class="leather-frame">
-              <img class="leather-logo" src="logo.png" alt="Quesosquad Bookshelf" />
-              <div class="corner tl"></div><div class="corner tr"></div>
-              <div class="corner bl"></div><div class="corner br"></div>
+    <div class="scene-zoom">
+      <div class="scene-camera">
+        <div class="room" id="room">
+
+          <!-- Pared del fondo: ventana + decoración -->
+          <div class="face wall-back">
+            <div class="window">
+              <div class="sky">
+                <div class="sun"></div>
+                <div class="clouds c1"></div>
+                <div class="clouds c2"></div>
+                <div class="clouds c3"></div>
+                <div class="hills far"></div>
+                <div class="hills near"></div>
+              </div>
+              <span class="glass-glare"></span>
+              <span class="bar-v"></span>
+              <span class="bar-h"></span>
             </div>
+            <div class="window-sill"></div>
+
+            <div class="wall-shelf">
+              <div class="shelf-row r1"></div>
+              <div class="shelf-row r2"></div>
+            </div>
+            <div class="wall-frame">🧀</div>
+
+            <div class="sconce sconce-l"><span class="flame"></span></div>
+            <div class="sconce sconce-r"><span class="flame"></span></div>
+          </div>
+
+          <div class="face wall-left"></div>
+          <div class="face wall-right"></div>
+          <div class="face ceiling"></div>
+          <div class="face floor"><div class="rug"></div></div>
+
+          <!-- Cartel flotante -->
+          <div class="float-sign" id="introSign" role="button" tabindex="0" aria-label="Entrar a la web">
+            <div class="sign-inner">
+              <span class="sign-line1">Quesosquad</span>
+              <span class="sign-line2">WEBPAGE</span>
+              <span class="sign-hint">✦ Click para entrar ✦</span>
+            </div>
+          </div>
+
+          <!-- Mesa de madera -->
+          <div class="table3d">
+            <div class="tbl tbl-shadow"></div>
+            <div class="tbl tbl-top"></div>
+            <div class="tbl tbl-front"></div>
+            <div class="tbl tbl-left"></div>
+            <div class="tbl tbl-right"></div>
+            <div class="tbl tbl-leg leg-bl"></div>
+            <div class="tbl tbl-leg leg-br"></div>
+            <div class="tbl tbl-leg leg-fl"></div>
+            <div class="tbl tbl-leg leg-fr"></div>
+          </div>
+
+          <!-- Objetos sobre la mesa (vista superior) -->
+          <div class="table-items">
+
+            <div class="item item-paper" aria-hidden="true">
+              <div class="parchment"></div>
+              <div class="quill"><span class="quill-shaft"></span></div>
+            </div>
+
+            <div class="item item-book">
+              <div class="lift">
+                <span class="obj-shadow"></span>
+                <div class="book-scale">
+                  <div id="coverBook" class="cover-book" role="button" tabindex="0" aria-label="Abrir el libro">
+                    <div class="cover-book__back"></div>
+                    <div class="cover-book__pages"></div>
+                    <div class="cover-book__front">
+                      <div class="leather">
+                        <div class="leather-frame">
+                          <img class="leather-logo" src="logo.png" alt="Quesosquad Bookshelf" />
+                          <div class="corner tl"></div><div class="corner tr"></div>
+                          <div class="corner bl"></div><div class="corner br"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <span class="item-label">📖 Club de lectura</span>
+            </div>
+
+            <div class="item item-camera" id="camItem" role="button" tabindex="0" aria-label="Videoteca">
+              <div class="lift">
+                <span class="obj-shadow"></span>
+                <div class="cam3d">
+                  <div class="c3-body">
+                    <span class="f b-top">
+                      <i class="bt-vents"></i>
+                      <i class="bt-plate"></i>
+                      <i class="bt-rec"></i>
+                    </span>
+                    <span class="f b-front"><i class="bf-grip"></i></span>
+                    <span class="f b-back"></span>
+                    <span class="f b-left"></span>
+                    <span class="f b-right"></span>
+                  </div>
+                  <div class="c3-lens">
+                    <span class="f l-top"></span>
+                    <span class="f l-bevl"></span>
+                    <span class="f l-bevr"></span>
+                    <span class="f l-ring"></span>
+                    <span class="f l-cap"></span>
+                  </div>
+                  <div class="c3-reel r1">
+                    <span class="f re-under"></span>
+                    <span class="f re-side"></span>
+                    <span class="f re-top"></span>
+                  </div>
+                  <div class="c3-reel r2">
+                    <span class="f re-under"></span>
+                    <span class="f re-side"></span>
+                    <span class="f re-top"></span>
+                  </div>
+                </div>
+              </div>
+              <span class="item-label">🎬 Videoteca</span>
+            </div>
+
+            <div class="item item-archive" id="archiveItem" role="button" tabindex="0" aria-label="Fichero de datos">
+              <div class="lift">
+                <span class="obj-shadow"></span>
+                <div class="file3d">
+                  <span class="f fw-floor"></span>
+                  <div class="f3-stack">
+                    <span class="f fs-top"></span>
+                    <span class="f fs-front"></span>
+                    <span class="f fs-tab t1"></span>
+                    <span class="f fs-tab t2"></span>
+                    <span class="f fs-tab t3"></span>
+                  </div>
+                  <span class="f fw-divider"></span>
+                  <span class="f fw-back"></span>
+                  <span class="f fw-left"></span>
+                  <span class="f fw-right"></span>
+                  <span class="f fw-front"><i class="fw-plate"></i></span>
+                  <span class="f fw-rim rim-b"></span>
+                  <span class="f fw-rim rim-l"></span>
+                  <span class="f fw-rim rim-r"></span>
+                  <span class="f fw-rim rim-f"></span>
+                </div>
+              </div>
+              <span class="item-label">🗃️ Fichero</span>
+            </div>
+
+            <div class="item item-candle" aria-hidden="true">
+              <div class="candle3d">
+                <span class="f cd-plate"></span>
+                <span class="f cd-side"></span>
+                <span class="f cd-top"></span>
+                <span class="f cd-flame"><i></i></span>
+                <span class="f cd-glow"></span>
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
     </div>
-    <p class="open-hint">✦ Tocá el libro para abrirlo ✦</p>
+
+    <p class="scene-tip">✦ Elegí un objeto de la mesa ✦</p>
+    <div class="scene-vignette"></div>
   </div>
+  <div id="soonToast" class="soon-toast" role="status"></div>
 
   <!-- ===== LIBRO ABIERTO: CONTIENE TODA LA WEB ===== -->
   <div id="bookSpread" class="book-spread hidden">
@@ -299,6 +452,7 @@
 
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="scene3d.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
