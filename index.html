@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Quesosquad's Bookshelf</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%80%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Cinzel+Decorative:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -33,9 +34,10 @@
 
   <!-- ===== LIBRO ABIERTO: CONTIENE TODA LA WEB ===== -->
   <div id="bookSpread" class="book-spread hidden">
+    <!-- fuera de .spread-inner: su clip-path recorta a los hijos y tapaba el cartel -->
+    <div class="close-book-hint" id="closeBookHint">Cerrar libro</div>
     <div class="spread-inner">
       <div class="spread-spine"></div>
-      <div class="close-book-hint" id="closeBookHint">Cerrar libro</div>
 
   <header class="topbar">
     <div class="brand">
@@ -108,7 +110,6 @@
                 <button class="cheese-half cheese-right" data-value="5"></button>
               </div>
             </div>
-            <span class="rating-avg" id="ratingAvg"></span>
           </div>
         </div>
         <div class="current-info">
@@ -130,6 +131,7 @@
             <a id="dlEpub" class="btn btn-download" download>⬇ EPUB</a>
           </div>
         </div>
+        <div id="ratingBreakdown" class="rating-breakdown"></div>
       </div>
     </section>
 
@@ -289,6 +291,7 @@
         <h2 id="detailTitle"></h2>
         <p id="detailMeta" class="book-detail__meta hidden"></p>
         <p id="detailDescription" class="book-detail__desc"></p>
+        <div id="detailRatings" class="rating-breakdown"></div>
         <div class="download-row">
           <a id="detailPdf" class="btn btn-download" download>⬇ PDF</a>
           <a id="detailEpub" class="btn btn-download" download>⬇ EPUB</a>

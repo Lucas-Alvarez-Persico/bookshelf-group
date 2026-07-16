@@ -464,6 +464,110 @@ main { max-width: 1100px; margin: 0 auto; padding: 36px 28px 80px; }
   color: var(--accent);
   min-height: 1.2em;
 }
+/* ---------- RESEÑAS DE CADA MIEMBRO ---------- */
+.rating-breakdown {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+}
+.rb-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.rb-title {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.rb-avg {
+  font-size: 0.82rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+.rb-empty {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0;
+}
+.rb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+.rb-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rb-name em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.75rem;
+}
+.rb-row.is-me .rb-name { color: var(--accent); font-weight: 600; }
+.rb-cheeses {
+  display: flex;
+  gap: 1px;
+  flex: none;
+}
+.rb-value {
+  flex: none;
+  width: 2.1em;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cheese-slot--mini {
+  width: 1.35rem;
+  height: 1.35rem;
+  font-size: 1.15rem;
+}
+.cheese-slot--mini:hover { transform: none; }
+/* fila propia editable: quesitos clickeables */
+.rb-row.is-editable .rb-cheeses { cursor: pointer; }
+.rb-row.is-editable .cheese-slot--mini:hover { transform: scale(1.15); }
+/* agranda el área de toque sin mover el layout */
+.rb-row.is-editable .cheese-half {
+  top: -6px;
+  bottom: -6px;
+  height: auto;
+}
+.rb-hint {
+  margin: 8px 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+}
+/* en el libro activo ocupa el ancho de las dos columnas, debajo de todo */
+.current-book > .rating-breakdown {
+  grid-column: 1 / -1;
+  width: auto;
+  margin: 22px 28px 0;
+}
+/* en el modal, separado de los botones de descarga */
+#detailRatings {
+  margin-bottom: 20px;
+}
 .current-cover-wrap {
   border-radius: var(--radius);
   overflow: hidden;
@@ -915,15 +1019,16 @@ main { max-width: 1100px; margin: 0 auto; padding: 36px 28px 80px; }
 .close-book-hint {
   position: fixed;
   left: 50%;
-  bottom: 24px;
+  /* el libro ocupa 88vh: entra justo en el hueco de abajo sin pisarlo */
+  bottom: 8px;
   transform: translateX(-50%) translateY(20px);
   z-index: 530;
   background: rgba(15, 14, 12, 0.88);
   color: var(--accent);
   font-family: 'Cinzel', serif;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   letter-spacing: 1px;
-  padding: 10px 24px;
+  padding: 7px 20px;
   border-radius: 999px;
   border: 1px solid var(--accent);
   pointer-events: none;

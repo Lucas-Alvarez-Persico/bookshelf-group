@@ -94,6 +94,9 @@ async function loadAllData() {
   if (votesRes.error) console.warn("votes:", votesRes.error.message);
   if (historyRes.error) console.warn("history:", historyRes.error.message);
 
+  // Necesarios para mostrar el nombre de quien puntuó cada libro.
+  await loadProfilesSafe();
+
   if (currentUser) {
     const round = appData.settings.voting_round;
     appData.myVote = appData.votes.find(
@@ -149,6 +152,20 @@ async function loadProfiles() {
   const { data, error } = await supabaseClient.from("profiles").select("*").order("created_at");
   if (error) throw error;
   appData.profiles = data || [];
+}
+
+// Igual que loadProfiles pero sin romper la carga general si RLS no deja leerlos.
+async function loadProfilesSafe() {
+  try {
+    await loadProfiles();
+  } catch (err) {
+    console.warn("profiles:", err.message);
+  }
+}
+
+function profileName(userId) {
+  const p = appData.profiles.find((x) => x.id === userId);
+  return p?.display_name || "Miembro";
 }
 
 function votePool() {
@@ -536,7 +553,7 @@ async function loadRatings(bookTitle) {
 }
 
 async function saveRating(bookTitle, rating) {
-  if (!currentUser) { showAuth(); return; }
+  if (!currentUser) { showAuth(); return false; }
   const { error } = await supabaseClient
     .from("book_ratings")
     .upsert({
@@ -545,16 +562,118 @@ async function saveRating(bookTitle, rating) {
       rating: parseFloat(rating),
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id,book_title" });
-  if (error) { console.error("rating save:", error.message); return; }
-  renderRating(bookTitle);
+  if (error) { console.error("rating save:", error.message); return false; }
+  return true;
 }
 
-function updateCheeseSlots(rating) {
-  $$(".cheese-slot").forEach((slot) => {
+// Repinta un grupo de quesitos (llenos / medios / vacíos) según el puntaje.
+function paintCheeseSlots(slots, rating) {
+  slots.forEach((slot) => {
     const idx = parseInt(slot.dataset.index, 10);
     slot.classList.remove("full", "half");
     if (rating >= idx) slot.classList.add("full");
     else if (rating >= idx - 0.5) slot.classList.add("half");
+  });
+}
+
+function updateCheeseSlots(rating) {
+  paintCheeseSlots($$("#ratingWidget .cheese-slot"), rating);
+}
+
+function averageRating(all) {
+  if (!all.length) return 0;
+  return all.reduce((sum, r) => sum + r.rating, 0) / all.length;
+}
+
+// Fila de 5 quesitos para un puntaje. Si es editable, suma los medios botones.
+function cheeseRowHtml(rating, editable = false) {
+  let html = "";
+  for (let i = 1; i <= 5; i++) {
+    let state = "";
+    if (rating >= i) state = " full";
+    else if (rating >= i - 0.5) state = " half";
+    html += `<span class="cheese-slot cheese-slot--mini${state}" data-index="${i}">
+      <span class="cheese-bg">🧀</span><span class="cheese-fill">🧀</span>`;
+    if (editable) {
+      html += `
+        <button class="cheese-half cheese-left" data-value="${i - 0.5}" aria-label="${i - 0.5} quesitos"></button>
+        <button class="cheese-half cheese-right" data-value="${i}" aria-label="${i} quesitos"></button>`;
+    }
+    html += `</span>`;
+  }
+  return html;
+}
+
+// Panel con la puntuación de cada miembro + el promedio. Se usa en el libro
+// activo y en el detalle de cada libro de la biblioteca.
+// opts.editable: deja tocar los quesitos de la fila propia para puntuar.
+function renderRatingBreakdown(el, all, opts = {}) {
+  if (!el) return;
+  const { editable = false, bookTitle = null } = opts;
+  const canEdit = editable && !!currentUser && !!bookTitle;
+
+  const mine = currentUser ? all.find((r) => r.user_id === currentUser.id) : null;
+  // Si puedo puntuar y todavía no lo hice, sumo mi fila vacía para poder cargarla.
+  const rows = [...all];
+  if (canEdit && !mine) rows.push({ user_id: currentUser.id, rating: null });
+
+  if (!rows.length) {
+    el.innerHTML = `
+      <div class="rb-head"><span class="rb-title">Reseñas de la Quesosquad</span></div>
+      <p class="rb-empty">Todavía nadie puntuó este libro.</p>`;
+    return;
+  }
+
+  const avg = averageRating(all);
+  const rowsHtml = rows
+    .sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1)
+      || profileName(a.user_id).localeCompare(profileName(b.user_id)))
+    .map((r) => {
+      const isMine = currentUser && r.user_id === currentUser.id;
+      const rowEditable = canEdit && isMine;
+      const value = r.rating === null ? "—" : r.rating.toFixed(1);
+      return `
+        <li class="rb-row${isMine ? " is-me" : ""}${rowEditable ? " is-editable" : ""}"
+            data-rating="${r.rating ?? 0}">
+          <span class="rb-name">${escapeHtml(profileName(r.user_id))}${isMine ? " <em>(vos)</em>" : ""}</span>
+          <span class="rb-cheeses">${cheeseRowHtml(r.rating ?? 0, rowEditable)}</span>
+          <span class="rb-value">${value}</span>
+        </li>`;
+    })
+    .join("");
+
+  const avgHtml = all.length
+    ? `<span class="rb-avg">Promedio ${avg.toFixed(1)} / 5 · ${all.length} reseña${all.length === 1 ? "" : "s"}</span>`
+    : "";
+
+  el.innerHTML = `
+    <div class="rb-head">
+      <span class="rb-title">Reseñas de la Quesosquad</span>
+      ${avgHtml}
+    </div>
+    <ul class="rb-list">${rowsHtml}</ul>
+    ${canEdit ? `<p class="rb-hint">Tocá los quesitos de tu fila para ${mine ? "cambiar" : "dejar"} tu reseña.</p>` : ""}`;
+
+  if (canEdit) wireBreakdownEditing(el, bookTitle);
+}
+
+// Hace clickeable la fila propia del panel: hover previsualiza, click guarda.
+function wireBreakdownEditing(el, bookTitle) {
+  const row = el.querySelector(".rb-row.is-editable");
+  if (!row) return;
+  const slots = row.querySelectorAll(".cheese-slot");
+  const saved = parseFloat(row.dataset.rating) || 0;
+
+  row.querySelectorAll(".cheese-half").forEach((btn) => {
+    const value = parseFloat(btn.dataset.value);
+    btn.onmouseenter = () => paintCheeseSlots(slots, value);
+    btn.onmouseleave = () => paintCheeseSlots(slots, saved);
+    btn.onclick = async () => {
+      if (!(await saveRating(bookTitle, value))) return;
+      await renderDetailRatings(bookTitle);
+      // Si es el libro que estamos leyendo, mantener sincronizada la pantalla de atrás.
+      if (appData.current?.title === bookTitle) renderRating(bookTitle);
+    };
   });
 }
 
@@ -564,20 +683,26 @@ async function renderRating(bookTitle) {
 
   updateCheeseSlots(myRating);
 
-  $$(".cheese-half").forEach((btn) => {
+  $$("#ratingWidget .cheese-half").forEach((btn) => {
     const value = parseFloat(btn.dataset.value);
-    btn.onclick = () => saveRating(bookTitle, value);
+    btn.onclick = async () => {
+      if (await saveRating(bookTitle, value)) renderRating(bookTitle);
+    };
     btn.onmouseenter = () => updateCheeseSlots(value);
     btn.onmouseleave = () => updateCheeseSlots(myRating);
   });
 
-  const avgEl = $("#ratingAvg");
-  if (all.length > 0) {
-    const avg = all.reduce((sum, r) => sum + r.rating, 0) / all.length;
-    avgEl.textContent = `${avg.toFixed(1)} / 5 · ${all.length} reseña${all.length === 1 ? "" : "s"}`;
-  } else {
-    avgEl.textContent = "";
-  }
+  renderRatingBreakdown($("#ratingBreakdown"), all);
+}
+
+async function renderDetailRatings(bookTitle) {
+  const el = $("#detailRatings");
+  if (!el) return;
+  el.innerHTML = `<p class="rb-empty">Cargando reseñas…</p>`;
+  const { all } = await loadRatings(bookTitle);
+  // Evita pisar el panel si el usuario ya abrió otro libro mientras cargaba.
+  if (el.dataset.title !== bookTitle) return;
+  renderRatingBreakdown(el, all, { editable: true, bookTitle });
 }
 
 function setupDownload(el, url, label) {
@@ -625,6 +750,10 @@ function openBookDetail(book, meta) {
   }
   setupDownload($("#detailPdf"), book.pdf_url, "PDF");
   setupDownload($("#detailEpub"), book.epub_url, "EPUB");
+  const ratingsEl = $("#detailRatings");
+  const detailTitle = book.title || "";
+  ratingsEl.dataset.title = detailTitle;
+  renderDetailRatings(detailTitle);
   const overlay = $("#bookDetailOverlay");
   overlay.classList.remove("hidden");
   requestAnimationFrame(() => overlay.classList.add("is-open"));

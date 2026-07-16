@@ -72,7 +72,14 @@ create function admin_delete_user(target_id uuid) returns void language plpgsql
 grant execute on function admin_reset_votes(), admin_wipe_all(), admin_delete_user(uuid)
   to anon, authenticated;
 
--- 6) CONTEO / CIERRE DE VOTACIÓN (reemplaza tally_votes_if_complete)
+-- 6-bis) NOMBRES EN LAS RESEÑAS
+--    Para mostrar quién puso cada puntaje de quesitos hace falta que un miembro
+--    logueado pueda leer el nombre de los demás perfiles (no solo el propio).
+--    Sin esta policy la app muestra "Miembro" en vez del nombre.
+drop policy if exists "profiles read all" on profiles;
+create policy "profiles read all" on profiles for select to authenticated using (true);
+
+-- 7) CONTEO / CIERRE DE VOTACIÓN (reemplaza tally_votes_if_complete)
 --    Arregla "DELETE requires a WHERE clause" y, al haber ganador, copia TODOS
 --    los datos del libro (descripción, tapa, pdf, epub) a current_reading.
 drop function if exists tally_votes_if_complete();
