@@ -229,6 +229,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 36px 28px 80px; }
 .vote-progress {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
   margin-bottom: 26px;
   padding: 16px 20px;
@@ -237,7 +238,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 36px 28px 80px; }
   border-radius: var(--radius);
 }
 .vote-progress .pbar {
-  flex: 1;
+  flex: 1 1 140px;
   height: 14px;
   background: var(--bg-elevated);
   border-radius: 999px;
@@ -376,6 +377,43 @@ main { max-width: 1100px; margin: 0 auto; padding: 36px 28px 80px; }
 .btn-vote { width: 100%; margin-top: auto; }
 .btn-vote.voted { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
 .btn-vote.mine { background: var(--accent); color: #1a1500; border-color: var(--accent); }
+.btn-vote.selected { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+.btn-vote.blocked {
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--line);
+  opacity: 0.75;
+}
+.btn-vote:disabled { cursor: default; }
+.btn-vote:disabled:hover { border-color: inherit; }
+
+/* Selección pendiente de confirmar */
+.book-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.vote-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+  padding: 18px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.vote-actions .vote-hint { margin: 0; font-size: 0.9rem; color: var(--muted); text-align: center; }
+.vote-actions .vote-hint.done { color: var(--text); }
+.vote-actions .vote-hint b { color: var(--accent); }
+.vote-actions .vote-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.vote-actions #castVoteBtn { padding: 12px 28px; font-size: 1rem; }
+.vote-actions #castVoteBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.vote-actions #castVoteBtn:disabled:hover { background: var(--accent); }
+.vote-progress .my-votes { font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+.vote-progress .my-votes b { color: var(--accent); }
+.vote-progress #closeVoteBtn { white-space: nowrap; padding: 8px 16px; }
 .btn-download { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
 .btn-download:hover { background: var(--accent); color: #1a1500; }
 .btn-download.disabled { opacity: 0.4; pointer-events: none; }

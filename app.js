@@ -3,6 +3,8 @@
    ========================================================= */
 
 const MAX_BOOKS = 5;
+// Cada miembro puede votar hasta 2 libros (los votos son opcionales).
+const MAX_VOTES_PER_USER = 2;
 
 let supabaseClient = null;
 let currentUser = null;
@@ -13,7 +15,7 @@ let appData = {
   settings: { member_count: 4, voting_round: 1, runoff_candidate_ids: null },
   candidates: [],
   votes: [],
-  myVote: null,
+  myVotes: [],
   current: null,
   history: [],
   profiles: [],
@@ -99,11 +101,11 @@ async function loadAllData() {
 
   if (currentUser) {
     const round = appData.settings.voting_round;
-    appData.myVote = appData.votes.find(
+    appData.myVotes = appData.votes.filter(
       (v) => v.user_id === currentUser.id && v.voting_round === round
-    ) || null;
+    );
   } else {
-    appData.myVote = null;
+    appData.myVotes = [];
   }
 }
 
@@ -196,6 +198,56 @@ function totalVotes() {
   ).length;
 }
 
+// Cantidad de personas distintas que ya votaron en la ronda actual.
+// Es lo que define si la votación está completa (cada una puede poner 1 o 2 votos).
+function votersCount() {
+  const round = appData.settings.voting_round;
+  const poolIds = new Set(votePool().map((b) => b.id));
+  const users = new Set();
+  appData.votes
+    .filter((v) => v.voting_round === round && poolIds.has(v.candidate_id))
+    .forEach((v) => users.add(v.user_id));
+  return users.size;
+}
+
+// Tope de votos por persona: 2, pero nunca todos los libros del pool
+// (si no, un desempate entre 2 libros quedaría empatado para siempre).
+function maxVotesAllowed() {
+  const poolSize = votePool().length;
+  return Math.max(1, Math.min(MAX_VOTES_PER_USER, poolSize - 1));
+}
+
+function myVoteIds() {
+  const poolIds = new Set(votePool().map((b) => b.id));
+  return appData.myVotes
+    .filter((v) => poolIds.has(v.candidate_id))
+    .map((v) => v.candidate_id);
+}
+
+// Selección local: los libros marcados NO se guardan hasta tocar "Realizar voto".
+let voteDraft = { round: null, ids: [], editing: true };
+
+function syncVoteDraft() {
+  const round = appData.settings.voting_round;
+  const poolIds = new Set(votePool().map((b) => b.id));
+  const mine = myVoteIds();
+
+  // Ronda nueva (o primer render): arranca desde lo que hay guardado.
+  if (voteDraft.round !== round) {
+    voteDraft = { round, ids: mine.slice(), editing: mine.length === 0 };
+    return;
+  }
+  // Fuera del modo edición el borrador espeja lo confirmado. Sin votos guardados
+  // (ronda nueva, reset del admin) vuelve a modo selección.
+  if (!voteDraft.editing) {
+    voteDraft.ids = mine.slice();
+    if (mine.length === 0) voteDraft.editing = true;
+    return;
+  }
+  // Editando: descarta libros que el admin haya sacado mientras tanto.
+  voteDraft.ids = voteDraft.ids.filter((id) => poolIds.has(id));
+}
+
 /* ---------- Auth ---------- */
 function getSupabaseProjectRef() {
   try {
@@ -227,7 +279,8 @@ async function signOutCompletely() {
 function resetAuthState() {
   currentUser = null;
   currentProfile = null;
-  appData.myVote = null;
+  appData.myVotes = [];
+  voteDraft = { round: null, ids: [], editing: true };
   $("#adminBtn").classList.add("hidden");
   closeAdmin();
   $("#loginPassword").value = "";
@@ -392,7 +445,9 @@ function renderVote() {
   const grid = $("#voteGrid");
   const empty = $("#voteEmpty");
   const progress = $("#voteProgress");
+  const actions = $("#voteActions");
   grid.innerHTML = "";
+  actions.innerHTML = "";
 
   const pool = votePool();
 
@@ -400,32 +455,70 @@ function renderVote() {
     empty.classList.remove("hidden");
     progress.innerHTML = "";
     progress.classList.add("hidden");
+    actions.classList.add("hidden");
     $("#voteSubtitle").textContent = "Elegí el próximo libro del grupo.";
     return;
   }
   empty.classList.add("hidden");
   progress.classList.remove("hidden");
+  actions.classList.remove("hidden");
+
+  syncVoteDraft();
 
   const runoff = appData.settings.runoff_candidate_ids?.length;
-  $("#voteSubtitle").textContent = runoff
-    ? "¡Hubo empate! Volvé a votar entre los libros igualados."
-    : "Elegí el próximo libro del grupo. Podés cambiar tu voto cuando quieras.";
+  const limit = maxVotesAllowed();
+  const editing = voteDraft.editing;
+  const selected = new Set(voteDraft.ids);
+  const mine = myVoteIds();
+  const hasVoted = mine.length > 0;
+
+  $("#voteSubtitle").textContent = !editing
+    ? "Ya votaste. Podés editar tu voto mientras la votación siga abierta."
+    : runoff
+      ? "¡Hubo empate! Volvé a elegir entre los libros igualados y confirmá tu voto."
+      : limit > 1
+        ? `Marcá 1 o ${limit} libros y confirmá con "Realizar voto".`
+        : "Elegí el próximo libro del grupo y confirmá tu voto.";
 
   const counts = voteCounts();
-  const voted = totalVotes();
+  const voters = votersCount();
+  const total = totalVotes();
   const members = appData.settings.member_count;
-  const pct = Math.min(100, Math.round((voted / members) * 100));
+  const pct = Math.min(100, Math.round((voters / members) * 100));
+  const complete = voters >= members;
   progress.innerHTML = `
-    <span>🗳️ <b>${voted}</b> / ${members} votos</span>
-    <div class="pbar"><span style="width:${pct}%"></span></div>`;
+    <span>🗳️ <b>${voters}</b> / ${members} votaron <span class="muted">(${total} voto${total === 1 ? "" : "s"})</span></span>
+    <div class="pbar"><span style="width:${pct}%"></span></div>
+    <span class="my-votes">Tus votos: <b>${mine.length}</b> / ${Math.max(limit, mine.length)}</span>
+    ${complete ? `<button class="btn btn-primary" id="closeVoteBtn">Cerrar votación</button>` : ""}`;
+  if (complete) {
+    $("#closeVoteBtn").addEventListener("click", () => tallyVotes());
+  }
 
-  const myCandidateId = appData.myVote?.candidate_id;
+  const atLimit = selected.size >= limit;
 
   pool.forEach((book) => {
     const count = counts[book.id] || 0;
-    const isMine = myCandidateId === book.id;
+    const isSel = selected.has(book.id);
+    const blocked = editing && !isSel && atLimit && limit > 1;
     const card = document.createElement("div");
-    card.className = "book-card";
+    card.className = `book-card${isSel ? " is-selected" : ""}`;
+
+    let label, cls, title;
+    if (editing) {
+      label = isSel ? "✓ Elegido" : "Elegir";
+      cls = isSel ? "selected" : blocked ? "blocked" : "";
+      title = isSel
+        ? "Tocá para desmarcarlo"
+        : blocked
+          ? `Ya marcaste ${limit} libros`
+          : "Marcar este libro";
+    } else {
+      label = isSel ? "✓ Tu voto" : "Sin votar";
+      cls = isSel ? "mine" : "blocked";
+      title = 'Tocá "Editar mi voto" para cambiarlo';
+    }
+
     card.innerHTML = `
       ${book.cover_url
         ? `<img class="cover clickable-cover" src="${book.cover_url}" alt="${escapeHtml(book.title)}" />`
@@ -433,48 +526,144 @@ function renderVote() {
       <div class="card-body">
         <span class="card-title">${escapeHtml(book.title)}</span>
         <span class="votes-count"><b>${count}</b> voto${count === 1 ? "" : "s"}</span>
-        <button class="btn btn-vote ${isMine ? "mine" : "btn-primary"}" data-vote="${book.id}">
-          ${isMine ? "✓ Tu voto" : "Votar"}
-        </button>
+        <button class="btn btn-vote ${cls}" data-vote="${book.id}"
+          title="${title}" ${editing ? "" : "disabled"}>${label}</button>
       </div>`;
     grid.appendChild(card);
   });
 
   grid.querySelectorAll("[data-vote]").forEach((btn) => {
-    btn.addEventListener("click", () => castVote(btn.dataset.vote));
+    btn.addEventListener("click", () => toggleSelection(btn.dataset.vote));
   });
   grid.querySelectorAll(".clickable-cover").forEach((el, i) => {
     el.addEventListener("click", () => openBookDetail(pool[i]));
   });
+
+  renderVoteActions({ editing, hasVoted, limit, selected, pool });
 }
 
-async function castVote(candidateId) {
+function renderVoteActions({ editing, hasVoted, limit, selected, pool }) {
+  const actions = $("#voteActions");
+  const n = selected.size;
+
+  if (!editing) {
+    const titles = pool.filter((b) => selected.has(b.id)).map((b) => escapeHtml(b.title));
+    actions.innerHTML = `
+      <p class="vote-hint done">✓ Votaste ${titles.map((t) => `<b>${t}</b>`).join(" y ")}.</p>
+      <button class="btn" id="editVoteBtn">✎ Editar mi voto</button>`;
+    $("#editVoteBtn").addEventListener("click", () => {
+      voteDraft.editing = true;
+      renderVote();
+    });
+    return;
+  }
+
+  const hint = n === 0
+    ? (limit > 1 ? `Marcá 1 o ${limit} libros para poder votar.` : "Marcá un libro para poder votar.")
+    : `Vas a votar ${n} libro${n === 1 ? "" : "s"}${n < limit ? ` (podés marcar ${limit - n} más)` : ""}.`;
+
+  actions.innerHTML = `
+    <p class="vote-hint">${hint}</p>
+    <div class="vote-buttons">
+      <button class="btn btn-primary" id="castVoteBtn" ${n === 0 ? "disabled" : ""}>
+        🗳️ Realizar voto${n ? ` (${n})` : ""}
+      </button>
+      ${hasVoted ? `<button class="btn btn-ghost" id="cancelVoteBtn">Cancelar</button>` : ""}
+    </div>`;
+
+  $("#castVoteBtn").addEventListener("click", submitVote);
+  if (hasVoted) {
+    $("#cancelVoteBtn").addEventListener("click", () => {
+      voteDraft.editing = false;
+      renderVote();
+    });
+  }
+}
+
+// Marca/desmarca un libro. No toca la base: es solo la selección local.
+function toggleSelection(candidateId) {
+  if (!currentUser) {
+    showAuth();
+    return;
+  }
+  if (!voteDraft.editing) return;
+
+  const limit = maxVotesAllowed();
+  const i = voteDraft.ids.indexOf(candidateId);
+
+  if (i >= 0) {
+    voteDraft.ids.splice(i, 1);
+  } else if (voteDraft.ids.length < limit) {
+    voteDraft.ids.push(candidateId);
+  } else if (limit === 1) {
+    // Con un solo voto disponible, marcar otro reemplaza al anterior.
+    voteDraft.ids = [candidateId];
+  } else {
+    alert(`Solo podés elegir ${limit} libros. Desmarcá uno para cambiarlo.`);
+    return;
+  }
+  renderVote();
+}
+
+// Confirma la selección: guarda solo la diferencia contra lo que ya estaba votado.
+async function submitVote() {
   if (!currentUser) {
     showAuth();
     return;
   }
 
+  const ids = voteDraft.ids.slice();
+  if (ids.length === 0) return;
+
   const round = appData.settings.voting_round;
-  const payload = {
-    user_id: currentUser.id,
-    candidate_id: candidateId,
-    voting_round: round,
-    updated_at: new Date().toISOString(),
-  };
+  const mine = myVoteIds();
+  const toRemove = mine.filter((id) => !ids.includes(id));
+  const toAdd = ids.filter((id) => !mine.includes(id));
 
-  const { error } = await supabaseClient
-    .from("votes")
-    .upsert(payload, { onConflict: "user_id,voting_round" });
-
-  if (error) {
-    alert("No se pudo registrar el voto: " + error.message);
-    return;
+  const btn = $("#castVoteBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Guardando…";
   }
 
+  // Primero los que salen: libera el cupo antes de insertar los nuevos.
+  if (toRemove.length) {
+    const { error } = await supabaseClient
+      .from("votes")
+      .delete()
+      .eq("user_id", currentUser.id)
+      .eq("voting_round", round)
+      .in("candidate_id", toRemove);
+    if (error) {
+      alert("No se pudo actualizar el voto: " + error.message);
+      await loadAllData();
+      render();
+      return;
+    }
+  }
+
+  if (toAdd.length) {
+    const { error } = await supabaseClient.from("votes").insert(
+      toAdd.map((id) => ({
+        user_id: currentUser.id,
+        candidate_id: id,
+        voting_round: round,
+        updated_at: new Date().toISOString(),
+      }))
+    );
+    if (error) {
+      alert("No se pudo registrar el voto: " + error.message);
+      await loadAllData();
+      render();
+      return;
+    }
+  }
+
+  voteDraft.editing = false;
   await loadAllData();
   render();
 
-  if (totalVotes() >= appData.settings.member_count) {
+  if (votersCount() >= appData.settings.member_count) {
     await tallyVotes();
   }
 }
